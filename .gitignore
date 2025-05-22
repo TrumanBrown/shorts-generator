@@ -1,0 +1,25 @@
+# Python virtual environment
+venv/
+
+# Bytecode and Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# macOS junk
+.DS_Store
+
+# Windows junk
+Thumbs.db
+
+# IDE/editor settings
+.vscode/
+.idea/
+
+# Output and audio
+output/
+audio/
+input/images/
+
+
+.env

@@ -1,0 +1,6 @@
+moviepy==1.0.3
+pillow<10
+pydub
+requests
+azure-cognitiveservices-speech
+python-dotenv
