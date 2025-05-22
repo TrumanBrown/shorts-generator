@@ -91,3 +91,6 @@ The script will:
 - Fetch one image per `[prompt]`
 - Combine each image with its corresponding audio
 - Concatenate clips into `output/final_video.mp4`
+
+
+test
