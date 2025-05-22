@@ -4,3 +4,4 @@ pydub
 requests
 azure-cognitiveservices-speech
 python-dotenv
+openai

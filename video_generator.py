@@ -3,6 +3,7 @@ import requests
 from dotenv import load_dotenv
 from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
 import azure.cognitiveservices.speech as speechsdk
+import openai
 
 # Load environment variables
 load_dotenv()
