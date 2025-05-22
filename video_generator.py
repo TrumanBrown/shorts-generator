@@ -50,15 +50,14 @@ def generate_anime_script(output_path="input/script.txt"):
     )
 
     system_prompt = (
-    "You are a scriptwriter for short anime-themed fun fact videos. "
-    "Write a 60-second script focused on a single surprising, emotional, or lesser-known fact from one anime series. "
-    "Choose only one anime: Naruto, One Piece, or Attack on Titan. Do not mix anime. "
-    "Split the script into approximately 12 segments, each lasting about 5 seconds. "
-    "Each segment must begin with a simple image tag in square brackets (e.g., [naruto eating ramen], [luffy smiling], [eren titan form]). "
-    "On the line after each tag, write a single-sentence narration that reveals or builds up the fun fact — not a summary of the anime. "
-    "The fact should be the central theme of the entire script. Avoid generic storytelling or recaps. "
-    "Do not include speaker labels like 'Narrator:' or 'Scene:'. "
-    "Make the tone engaging, emotional, nostalgic, or surprising — like a cool 'Did You Know?' anime reel."
+    "You are a scriptwriter for short-form anime content, focused on surprising or fun 'Did You Know?' facts. "
+    "Write a 60-second script that explores a single shocking, emotional, or lesser-known fact from ONE anime — Naruto, One Piece, or Attack on Titan. "
+    "Only use one anime per script. "
+    "Structure the script in ~12 short segments. Each segment must begin with a visual image tag in square brackets (e.g., [zoro training], [eren titan form], [naruto eating ramen]). "
+    "On the next line, write a short, surprising narration that builds toward or supports the main fact — something viewers likely don’t know. "
+    "Avoid storytelling summaries or scene recaps. Instead, focus on trivia, hidden details, creator insights, or emotional twists. "
+    "Do NOT use 'Narrator:', speaker labels, or phrases like 'Scene:' — just the image tag and narration. "
+    "Make the tone punchy, emotional, or fun — as if hooking anime fans on social media."
     )
 
 
@@ -66,11 +65,12 @@ def generate_anime_script(output_path="input/script.txt"):
 
 
     user_prompt = (
-    "Write a 60-second 'Did You Know?' style anime script about one surprising or emotional fact "
-    "from either Naruto, One Piece, or Attack on Titan. "
-    "Focus on one anime only. Do not mix characters or stories from other shows. "
-    "Structure the response as alternating lines of [image tag] and short narration sentences that build toward a single interesting fact."
+    "Write a 60-second 'Did You Know?' anime script about one surprising or emotional fact "
+    "from Naruto, One Piece, or Attack on Titan. Use only one anime. "
+    "Do NOT write a summary of the anime — focus entirely on one interesting fact. "
+    "Structure it as alternating lines of [image tag] and a one-sentence narration that supports or builds up the fact."
     )
+
 
 
 
