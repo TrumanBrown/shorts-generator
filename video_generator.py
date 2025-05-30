@@ -1,12 +1,12 @@
 import os
 import requests
 from dotenv import load_dotenv
-from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
+from moviepy.editor import ImageClip, AudioFileClip, TextClip, CompositeVideoClip, concatenate_videoclips
 import azure.cognitiveservices.speech as speechsdk
 from openai import AzureOpenAI
 from PIL import Image
 import shutil
-
+import re
 
 # Load environment variables
 load_dotenv()
@@ -50,30 +50,20 @@ def generate_anime_script(output_path="input/script.txt"):
     )
 
     system_prompt = (
-    "You are a scriptwriter for short-form anime content, focused on surprising or fun 'Did You Know?' facts. "
-    "Write a 60-second script that explores a single shocking, emotional, or lesser-known fact from ONE anime — Naruto, One Piece, or Attack on Titan. "
-    "Only use one anime per script. "
-    "Structure the script in ~12 short segments. Each segment must begin with a visual image tag in square brackets (e.g., [zoro training], [eren titan form], [naruto eating ramen]). "
-    "On the next line, write a short, surprising narration that builds toward or supports the main fact — something viewers likely don’t know. "
-    "Avoid storytelling summaries or scene recaps. Instead, focus on trivia, hidden details, creator insights, or emotional twists. "
-    "Do NOT use 'Narrator:', speaker labels, or phrases like 'Scene:' — just the image tag and narration. "
-    "Make the tone punchy, emotional, or fun — as if hooking anime fans on social media."
+        "You are a scriptwriter for short-form anime trivia content. Your job is to write 60-second 'Did You Know?' style scripts for fans of ONE specific anime (Naruto, One Piece, or Attack on Titan). "
+        "Each script should focus on one surprising, strange, dark, or obscure fact — not a summary or inspirational story arc. "
+        "Do not include life lessons or moral reflections. No summaries or 'he taught us...' or 'this shows...' type conclusions. "
+        "Structure the script as ~12 alternating lines: one image tag in square brackets, followed by one short narration sentence. "
+        "Image tags must begin with the anime name (e.g., [naruto sakura punching], [one piece gear 5 luffy], [attack on titan zeke scream]). "
+        "Narration must be direct, punchy, and surprising — include obscure trivia, creator easter eggs, character quirks, or fan debates. "
+        "No 'Narrator:' labels. No intros, no outros, no recaps, no emotional sendoffs — just fun, sharp facts."
     )
-
-
-
-
 
     user_prompt = (
-    "Write a 60-second 'Did You Know?' anime script about one surprising or emotional fact "
-    "from Naruto, One Piece, or Attack on Titan. Use only one anime. "
-    "Do NOT write a summary of the anime — focus entirely on one interesting fact. "
-    "Structure it as alternating lines of [image tag] and a one-sentence narration that supports or builds up the fact."
+        "Write a 60-second anime 'Did You Know?' script about one weird, dark, or obscure fact from Naruto, One Piece, or Attack on Titan. "
+        "Use only one anime for the entire script. Avoid summaries or morals — focus only on a surprising or lesser-known fact. "
+        "Use [image prompt] followed by one-sentence narration, alternating for ~12 lines total."
     )
-
-
-
-
 
     response = client.chat.completions.create(
         messages=[
@@ -87,6 +77,7 @@ def generate_anime_script(output_path="input/script.txt"):
     )
 
     script_text = response.choices[0].message.content.strip()
+    script_text = re.sub(r"(\[[^\]]+\])\s+(?!\n)", r"\1\n", script_text)
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
@@ -115,22 +106,31 @@ def parse_script(script_path):
         segments.append((prompt, text))
     return segments
 
-def fetch_image_url(query):
+def fetch_image_url(query, max_attempts=5):
     try:
         params = {
             "key": GOOGLE_API_KEY,
             "cx": CSE_ID,
             "q": query,
             "searchType": "image",
-            "num": 1,
+            "num": max_attempts,
             "safe": "active"
         }
         url = "https://www.googleapis.com/customsearch/v1"
         response = requests.get(url, params=params)
         data = response.json()
+
         if "items" not in data or not data["items"]:
             raise ValueError("No image results found")
-        return data["items"][0]["link"]
+
+        for i, item in enumerate(data["items"]):
+            image_url = item.get("link")
+            if image_url:
+                print(f"✅ Found image (index {i}): {image_url}")
+                return image_url
+
+        raise ValueError("No usable image links found")
+
     except Exception as e:
         print(f"❌ Failed to find image for '{query}': {e}")
         return fetch_image_url("anime background")
@@ -192,7 +192,12 @@ def load_clips(segments):
         audio = AudioFileClip(audio_path)
         image = ImageClip(image_path).set_duration(audio.duration).set_audio(audio)
         image = image.resize(height=720).fadein(0.5).fadeout(0.5)
-        clips.append(image)
+
+        subtitle = TextClip(text, fontsize=40, color='white', font='Arial-Bold', size=image.size, method='caption')
+        subtitle = subtitle.set_position(("center", "bottom")).set_duration(audio.duration)
+
+        composite = CompositeVideoClip([image, subtitle]).set_duration(audio.duration).set_audio(audio)
+        clips.append(composite)
     return clips
 
 def main():
