@@ -60,10 +60,12 @@ def generate_anime_script(output_path="input/script.txt"):
     )
 
     user_prompt = (
-        "Write a 60-second anime 'Did You Know?' script about one weird, dark, or obscure fact from Naruto, One Piece, or Attack on Titan. "
-        "Use only one anime for the entire script. Avoid summaries or morals — focus only on a surprising or lesser-known fact. "
-        "Use [image prompt] followed by one-sentence narration, alternating for ~12 lines total."
+    "Write a short anime 'Did You Know?' video script based entirely on one single obscure or surprising fact from one anime (Naruto, One Piece, or Attack on Titan). "
+    "Choose just one fact — do not mix facts. Structure the script as alternating lines of [image description] followed by one sentence of narration. "
+    "Keep it focused only on that single topic — expanding on it with different scenes, effects, or consequences. "
+    "Keep it around 10–12 lines total. Don't add extra facts or trivia unrelated to the main one."
     )
+
 
     response = client.chat.completions.create(
         messages=[
@@ -191,7 +193,7 @@ def load_clips(segments):
 
         audio = AudioFileClip(audio_path)
         image = ImageClip(image_path).set_duration(audio.duration).set_audio(audio)
-        image = image.resize(height=720).fadein(0.5).fadeout(0.5)
+        image = image.resize(height=720).fadein(0.5, initial_color=(0, 0, 0)).fadeout(0.5, final_color=(0, 0, 0))
 
         subtitle = TextClip(text, fontsize=40, color='white', font='Arial-Bold', size=image.size, method='caption')
         subtitle = subtitle.set_position(("center", "bottom")).set_duration(audio.duration)

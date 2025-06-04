@@ -19,7 +19,8 @@ Thumbs.db
 # Output and audio
 output/
 audio/
-input/images/
+input/
+
 
 
 .env
