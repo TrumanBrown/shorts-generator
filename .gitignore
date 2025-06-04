@@ -21,6 +21,6 @@ output/
 audio/
 input/
 
-
+*.mp3
 
 .env
