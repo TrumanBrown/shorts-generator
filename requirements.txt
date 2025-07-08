@@ -5,4 +5,4 @@ requests
 azure-cognitiveservices-speech
 python-dotenv
 openai
-shutil
+elevenlabs

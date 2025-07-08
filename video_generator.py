@@ -1,12 +1,16 @@
 import os
 import requests
-from dotenv import load_dotenv
-from moviepy.editor import ImageClip, AudioFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, ColorClip
-import azure.cognitiveservices.speech as speechsdk
-from openai import AzureOpenAI
-from PIL import Image
 import shutil
 import re
+from dotenv import load_dotenv
+from PIL import Image
+from moviepy.editor import (
+    ImageClip, AudioFileClip, TextClip, CompositeVideoClip,
+    concatenate_videoclips, ColorClip
+)
+from moviepy.video.fx.all import fadein, fadeout
+from elevenlabs.client import ElevenLabs
+from openai import AzureOpenAI
 
 # Load environment variables
 load_dotenv()
@@ -63,7 +67,8 @@ def generate_anime_script(output_path="input/script.txt"):
         "Write a short anime 'Did You Know?' video script focused on one obscure or surprising fact from Naruto, One Piece, or Attack on Titan. "
         "Pick just one fact and expand on it using multiple angles. "
         "Structure the script as alternating lines of [image search prompt] and a short narration sentence. "
-        "Each image prompt should include character names, context, or actions — but stay reasonably general and searchable (e.g., [one piece luffy showing scar], [naruto young sasuke with family], [attack on titan zeke yelling]). "
+        "Each image prompt should include character names, context, or actions — but stay reasonably general and searchable "
+        "(e.g., [one piece luffy showing scar], [naruto young sasuke with family], [attack on titan zeke yelling]). "
         "Do not use vague prompts like [anime scene] or [battle shot], but also don’t go too narrow like [one piece episode 4 scene with dagger at timestamp]. "
         "Keep it 10–12 lines total, no intro/outro."
     )
@@ -154,15 +159,51 @@ def is_valid_image(path):
     except:
         return False
 
-def generate_tts(text, path, key, region, voice="en-US-BrianMultilingualNeural"):
-    config = speechsdk.SpeechConfig(subscription=key, region=region)
-    config.speech_synthesis_voice_name = voice
-    out_cfg = speechsdk.audio.AudioOutputConfig(filename=path)
-    synth = speechsdk.SpeechSynthesizer(speech_config=config, audio_config=out_cfg)
-    result = synth.speak_text_async(text).get()
-    if result.reason != speechsdk.ResultReason.SynthesizingAudioCompleted:
-        raise Exception("TTS failed")
-    print(f"Generated TTS: {path}")
+def generate_tts(text, path, key=None, region=None, voice=None):
+    api_key = os.getenv("ELEVENLABS_API_KEY")
+    voice_id = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")  # Default: Rachel
+
+    if not api_key:
+        raise EnvironmentError("ELEVENLABS_API_KEY not set")
+
+    client = ElevenLabs(api_key=api_key)
+
+    try:
+        audio_stream = client.text_to_speech.convert(
+            voice_id=voice_id,
+            output_format="mp3_44100_128",
+            text=text,
+            model_id="eleven_multilingual_v2"
+        )
+        with open(path, "wb") as f:
+            for chunk in audio_stream:
+                f.write(chunk)
+        print(f"Generated TTS: {path}")
+    except Exception as e:
+        raise RuntimeError(f"ElevenLabs TTS failed: {e}")
+
+def styled_subtitle(text, duration):
+    try:
+        subtitle = (TextClip(
+                txt=text,
+                fontsize=65,
+                font="Arial-Bold",
+                color="yellow",
+                stroke_color="black",
+                stroke_width=6,
+                size=(800, None),  # narrower width to wrap earlier
+                method="caption")
+            .set_position(("center", "bottom"))
+            .set_duration(duration)
+            .margin(bottom=100)
+            .fadein(0.3)
+            .fadeout(0.3))
+        return subtitle
+    except Exception as e:
+        print(f"Subtitle render failed: {e}")
+        return None
+
+
 
 def load_clips(segments):
     clips = []
@@ -177,16 +218,13 @@ def load_clips(segments):
             url = fetch_image_url(prompt)
             download_image(url, image_path, original_prompt=prompt)
 
-
         audio = AudioFileClip(audio_path)
         img = ImageClip(image_path).set_audio(audio).set_duration(audio.duration)
         img = img.resize(width=1080) if img.w > img.h else img.resize(height=1080)
         background = ColorClip((1080, 1080), color=(0, 0, 0), duration=audio.duration)
-        img = img.set_position("center")
-        base = CompositeVideoClip([background, img]).fadein(0.5).fadeout(0.5)
+        base = CompositeVideoClip([background, img.set_position("center")]).fadein(0.5).fadeout(0.5)
 
-        subtitle = TextClip(text, fontsize=40, color='white', font='Arial-Bold', size=img.size, method='caption')
-        subtitle = subtitle.set_position("bottom").set_duration(audio.duration)
+        subtitle = styled_subtitle(text, audio.duration)
 
         final = CompositeVideoClip([base, subtitle]).set_audio(audio)
         clips.append(final)
