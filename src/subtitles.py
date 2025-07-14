@@ -1,25 +1,32 @@
-from moviepy.editor import TextClip
+from moviepy.editor import TextClip, CompositeVideoClip
 
-def styled_subtitle(text, duration):
-    try:
-        subtitle = (
+def styled_subtitle(text, duration, word_timings):
+    word_clips = []
+
+    fontsize = 60
+    font = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
+
+    for word_info in word_timings:
+        word = word_info['word']
+        start_time = word_info['start'] / 1000
+        word_duration = word_info['duration'] / 1000
+
+        word_clip = (
             TextClip(
-                txt=text,
-                fontsize=48,                    # Smaller font size
-                font="Arial-Bold",
-                color="yellow",                 # Ensure color is yellow
-                stroke_color="black",
-                stroke_width=4,                 # Slightly thinner border
-                size=(960, None),               # Wrap earlier, but not too narrow
-                method="caption"
+                txt=word,
+                fontsize=fontsize,
+                font=font,
+                color='yellow',
+                stroke_color='black',
+                stroke_width=3
+                # Removed method='caption' and size
             )
-            .set_position(("center", "bottom"))
-            .set_duration(duration)
-            .margin(bottom=40)                 # Lower down (closer to bottom)
-            .fadein(0.3)
-            .fadeout(0.3)
+            .set_start(start_time)
+            .set_duration(word_duration)
+            .set_position(('center', 'bottom'))
         )
-        return subtitle
-    except Exception as e:
-        print(f"Subtitle render failed: {e}")
-        return None
+        word_clips.append(word_clip)
+
+    subtitle_clip = CompositeVideoClip(word_clips).set_duration(duration).margin(bottom=60)
+
+    return subtitle_clip

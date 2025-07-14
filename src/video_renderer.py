@@ -15,21 +15,23 @@ def load_clips(segments, use_audio=True):
         image_path = os.path.join(IMAGE_DIR, f"step{idx}.jpg")
         audio_path = os.path.join(AUDIO_DIR, f"step{idx}.mp3")
 
-        # Generate audio only if enabled
-        if use_audio and not os.path.exists(audio_path):
-            generate_tts(text, audio_path)
+        word_timings = None
+        if use_audio:
+            # Always generate word timings even if audio file exists
+            if not os.path.exists(audio_path):
+                word_timings = generate_tts(text, audio_path)
+            else:
+                # Re-generate audio to also get fresh timings
+                word_timings = generate_tts(text, audio_path)
 
-        # Always download image if needed
         if not os.path.exists(image_path) or not is_valid_image(image_path):
             url = fetch_image_url(prompt)
             download_image(url, image_path, original_prompt=prompt)
 
-        duration = None
+        duration = 3.5
         if use_audio:
             audio = AudioFileClip(audio_path)
             duration = audio.duration
-        else:
-            duration = 3.5  # default length if no audio
 
         img = ImageClip(image_path).set_duration(duration)
         if use_audio:
@@ -39,13 +41,16 @@ def load_clips(segments, use_audio=True):
         background = ColorClip((1080, 1080), color=(0, 0, 0), duration=duration)
         base = CompositeVideoClip([background, img.set_position("center")]).fadein(0.5).fadeout(0.5)
 
-        subtitle = styled_subtitle(text, duration)
+        subtitle = styled_subtitle(text, duration, word_timings)
+        print(f"Subtitle clip size for step {idx}: {subtitle.size}")
+
         final = CompositeVideoClip([base, subtitle])
         if use_audio:
             final = final.set_audio(audio)
 
         clips.append(final)
     return clips
+
 
 def create_video(segments, output_path, use_audio=True):
     clips = load_clips(segments, use_audio=use_audio)
