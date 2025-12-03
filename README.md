@@ -20,6 +20,10 @@ This project automates the creation of 60-second anime "Did You Know?" videos, f
 - Azure OpenAI resource with a GPT-4 deployment
 - Azure Speech service key and region
 
+Optional:
+
+- ElevenLabs account if you want to use `TTS_PROVIDER=elevenlabs`
+
 ## Setup
 
 ### 1. Clone the repository
@@ -68,17 +72,27 @@ AZURE_OPENAI_API_KEY="your-openai-key"
 AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
 AZURE_OPENAI_DEPLOYMENT="gpt-4"
 AZURE_OPENAI_API_VERSION="2024-12-01-preview"
+
+# Optional: swap to ElevenLabs TTS
+TTS_PROVIDER="azure" # or "elevenlabs"
+ELEVENLABS_API_KEY="your-elevenlabs-key"
+ELEVENLABS_VOICE_ID="21m00Tcm4TlvDq8ikWAM"
 ```
 
 ## Usage
 
-1. Run the script generator:
+Run the generator (audio enabled by default):
 
 ```bash
-python video_generator.py
+python main.py
 ```
 
-2. It will automatically:
+Flags:
+
+- `--no-audio`: render without narration or word-level subtitles
+- `--skip-script`: reuse the existing script file instead of generating a new one
+
+The script will:
 
 - Generate a single-anime script around one surprising or emotional fact
 - Fetch 12 images using Google Search

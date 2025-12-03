@@ -1,13 +1,16 @@
 import os
 from moviepy.editor import (
-    ImageClip, AudioFileClip, CompositeVideoClip, concatenate_videoclips, ColorClip
+    ImageClip,
+    AudioFileClip,
+    CompositeVideoClip,
+    concatenate_videoclips,
+    ColorClip,
 )
+from src.config import IMAGE_DIR, AUDIO_DIR
 from src.image_handler import is_valid_image, fetch_image_url, download_image
 from src.audio_generator import generate_tts
 from src.subtitles import styled_subtitle
 
-IMAGE_DIR = "input/images"
-AUDIO_DIR = "audio"
 
 def load_clips(segments, use_audio=True):
     clips = []
@@ -15,26 +18,21 @@ def load_clips(segments, use_audio=True):
         image_path = os.path.join(IMAGE_DIR, f"step{idx}.jpg")
         audio_path = os.path.join(AUDIO_DIR, f"step{idx}.mp3")
 
-        word_timings = None
+        word_timings = []
+        audio = None
+        duration = 3.5
+
         if use_audio:
-            # Always generate word timings even if audio file exists
-            if not os.path.exists(audio_path):
-                word_timings = generate_tts(text, audio_path)
-            else:
-                # Re-generate audio to also get fresh timings
-                word_timings = generate_tts(text, audio_path)
+            word_timings = generate_tts(text, audio_path) or []
+            audio = AudioFileClip(audio_path)
+            duration = audio.duration
 
         if not os.path.exists(image_path) or not is_valid_image(image_path):
             url = fetch_image_url(prompt)
             download_image(url, image_path, original_prompt=prompt)
 
-        duration = 3.5
-        if use_audio:
-            audio = AudioFileClip(audio_path)
-            duration = audio.duration
-
         img = ImageClip(image_path).set_duration(duration)
-        if use_audio:
+        if audio:
             img = img.set_audio(audio)
 
         img = img.resize(width=1080) if img.w > img.h else img.resize(height=1080)
@@ -42,10 +40,9 @@ def load_clips(segments, use_audio=True):
         base = CompositeVideoClip([background, img.set_position("center")]).fadein(0.5).fadeout(0.5)
 
         subtitle = styled_subtitle(text, duration, word_timings)
-        print(f"Subtitle clip size for step {idx}: {subtitle.size}")
-
         final = CompositeVideoClip([base, subtitle])
-        if use_audio:
+
+        if audio:
             final = final.set_audio(audio)
 
         clips.append(final)
