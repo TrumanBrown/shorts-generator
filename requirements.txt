@@ -1,5 +1,5 @@
 moviepy==1.0.3
-pillow<10
+pillow==9.5.0
 requests
 azure-cognitiveservices-speech
 python-dotenv

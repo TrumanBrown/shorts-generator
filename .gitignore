@@ -1,7 +1,7 @@
 __pycache__/
 *.pyc
 .env
-venv/
+.venv/
 audio/
 input/images/
 input/script.txt

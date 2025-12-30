@@ -1,10 +1,19 @@
+import os
+from moviepy.config import change_settings
 from moviepy.editor import TextClip, CompositeVideoClip
+
+# Configure ImageMagick path if provided (needed on Windows)
+magick_path = os.getenv("IMAGEMAGICK_BINARY")
+if magick_path:
+    change_settings({"IMAGEMAGICK_BINARY": magick_path})
 
 
 def styled_subtitle(text, duration, word_timings=None):
     timings = word_timings or []
     fontsize = 60
-    font = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    # Default to Windows bold Arial if available; otherwise fall back to a common Linux font
+    default_font = "C:\\Windows\\Fonts\\arialbd.ttf" if os.name == "nt" else "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    font = os.getenv("SUBTITLE_FONT_PATH", default_font)
 
     if not timings:
         caption = (

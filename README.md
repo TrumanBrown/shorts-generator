@@ -14,8 +14,10 @@ This project automates the creation of 60-second anime "Did You Know?" videos, f
 
 ## Requirements
 
-- Python 3.8 or newer
+- Python 3.11 (recommended)
+	- This project's dependency pins are not compatible with very new Python versions (e.g. 3.13/3.14), which can cause `pip install -r requirements.txt` to fail while building `Pillow` from source.
 - ffmpeg installed and accessible in your system PATH
+- ImageMagick installed and on PATH (required by MoviePy for subtitles on Windows)
 - Google API key and Custom Search Engine (CSE) ID with image search enabled
 - Azure OpenAI resource with a GPT-4 deployment
 - Azure Speech service key and region
@@ -29,8 +31,8 @@ Optional:
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/trumanbrown/anime-shorts-generator.git
-cd anime-shorts-generator
+git clone https://github.com/trumanbrown/shorts-generator.git
+cd shorts-generator
 ```
 
 ### 2. Create and activate a virtual environment
@@ -45,8 +47,8 @@ source venv/bin/activate
 Windows:
 
 ```bash
-python -m venv venv
-venv\Scripts\activate
+py -3.11 -m venv .venv
+.venv\Scripts\activate
 ```
 
 ### 3. Install dependencies
@@ -55,7 +57,17 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+If you see an error building `Pillow` on Windows, it almost always means your Python version is too new for the pinned dependencies. Recreate the venv with Python 3.11 (above) and retry.
+
 Ensure ffmpeg is installed. You can download it from https://ffmpeg.org/download.html
+
+ImageMagick on Windows (needed for subtitles):
+- Download ImageMagick 7 (Q16) from https://imagemagick.org/script/download.php
+- During setup, check “Add application directory to your system path” and “Install legacy utilities (convert)”
+- Open a new terminal and verify `magick --version` works
+- If MoviePy still cannot find it, set the path in `.env` (adjust if your install differs):
+  - `IMAGEMAGICK_BINARY="C:\\Program Files\\ImageMagick-7.1.1-Q16-HDRI\\magick.exe"`
+- If you hit a missing-font error, set a Windows font in `.env`, e.g. `SUBTITLE_FONT_PATH="C:\\Windows\\Fonts\\arialbd.ttf"`
 
 ## Environment Configuration
 
@@ -79,6 +91,11 @@ ELEVENLABS_API_KEY="your-elevenlabs-key"
 ELEVENLABS_VOICE_ID="21m00Tcm4TlvDq8ikWAM"
 ```
 
+Notes:
+- `TTS_PROVIDER` defaults to `azure` when omitted.
+- Scripts are written to `input/script.txt`. Use `--skip-script` to reuse or manually edit that file between runs.
+- Each run clears `input/images/` and `audio/` to avoid stale assets.
+
 ## Usage
 
 Run the generator (audio enabled by default):
@@ -91,6 +108,11 @@ Flags:
 
 - `--no-audio`: render without narration or word-level subtitles
 - `--skip-script`: reuse the existing script file instead of generating a new one
+
+Other entry points:
+
+- `python main_with_audio.py` forces audio on.
+- `python main_no_audio.py` runs with `--no-audio`.
 
 The script will:
 
@@ -118,5 +140,10 @@ Each `[tag]` line indicates the image search prompt, followed by a short narrati
 ## Output
 
 Final video is saved to `output/final_video.mp4`.
+
+Output paths and cached assets:
+- `input/script.txt`: latest generated script (reused with `--skip-script`)
+- `input/images/`: downloaded images for the current run
+- `audio/`: TTS mp3s (skipped when running with `--no-audio`)
 
 Supports content suitable for YouTube Shorts, TikTok, or Instagram Reels.
