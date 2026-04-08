@@ -1,58 +1,99 @@
-import os
+"""Subtitle clip generation for MoviePy.
+
+Creates styled subtitle overlays — either a single static caption when no
+word timings are available, or individual per-word clips synchronised to
+TTS audio boundaries for a karaoke-style effect.
+"""
+
+import logging
+
 from moviepy.config import change_settings
-from moviepy.editor import TextClip, CompositeVideoClip
+from moviepy.editor import CompositeVideoClip, TextClip
 
-# Configure ImageMagick path if provided (needed on Windows)
-magick_path = os.getenv("IMAGEMAGICK_BINARY")
-if magick_path:
-    change_settings({"IMAGEMAGICK_BINARY": magick_path})
+from src.config import (
+    IMAGEMAGICK_BINARY,
+    SUBTITLE_BOTTOM_MARGIN,
+    SUBTITLE_CAPTION_WIDTH,
+    SUBTITLE_COLOR,
+    SUBTITLE_FONT_PATH,
+    SUBTITLE_FONT_SIZE,
+    SUBTITLE_STROKE_COLOR,
+    SUBTITLE_STROKE_WIDTH,
+)
+
+logger = logging.getLogger(__name__)
+
+# Configure ImageMagick path if provided (needed on Windows).
+if IMAGEMAGICK_BINARY:
+    change_settings({"IMAGEMAGICK_BINARY": IMAGEMAGICK_BINARY})
 
 
-def styled_subtitle(text, duration, word_timings=None):
+def styled_subtitle(
+    text: str,
+    duration: float,
+    word_timings: list[dict] | None = None,
+) -> TextClip | CompositeVideoClip:
+    """Build a subtitle clip for a single video segment.
+
+    When *word_timings* is provided (from Azure TTS), each word is rendered
+    as an independent clip timed to its spoken interval.  Otherwise a single
+    static caption is used for the entire *duration*.
+    """
     timings = word_timings or []
-    fontsize = 60
-    # Default to Windows bold Arial if available; otherwise fall back to a common Linux font
-    default_font = "C:\\Windows\\Fonts\\arialbd.ttf" if os.name == "nt" else "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-    font = os.getenv("SUBTITLE_FONT_PATH", default_font)
 
     if not timings:
-        caption = (
-            TextClip(
-                txt=text,
-                fontsize=fontsize,
-                font=font,
-                color="yellow",
-                stroke_color="black",
-                stroke_width=3,
-                method="caption",
-                size=(900, None),
-            )
-            .set_duration(duration)
-            .set_position(("center", "bottom"))
-            .margin(bottom=60)
-        )
-        return caption
+        return _static_caption(text, duration)
+    return _word_level_caption(timings, duration)
 
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+def _static_caption(text: str, duration: float) -> TextClip:
+    """Render a single caption spanning the full *duration*."""
+    logger.debug("Static subtitle: '%s' (%.1fs)", text[:40], duration)
+    return (
+        TextClip(
+            txt=text,
+            fontsize=SUBTITLE_FONT_SIZE,
+            font=SUBTITLE_FONT_PATH,
+            color=SUBTITLE_COLOR,
+            stroke_color=SUBTITLE_STROKE_COLOR,
+            stroke_width=SUBTITLE_STROKE_WIDTH,
+            method="caption",
+            size=(SUBTITLE_CAPTION_WIDTH, None),
+        )
+        .set_duration(duration)
+        .set_position(("center", "bottom"))
+        .margin(bottom=SUBTITLE_BOTTOM_MARGIN)
+    )
+
+
+def _word_level_caption(
+    timings: list[dict], duration: float
+) -> CompositeVideoClip:
+    """Render one clip per word, timed to TTS word boundaries."""
+    logger.debug("Word-level subtitles: %d words over %.1fs", len(timings), duration)
     word_clips = []
-    for word_info in timings:
-        word = word_info["word"]
-        start_time = word_info["start"] / 1000
-        word_duration = word_info["duration"] / 1000
-
-        word_clip = (
+    for info in timings:
+        clip = (
             TextClip(
-                txt=word,
-                fontsize=fontsize,
-                font=font,
-                color="yellow",
-                stroke_color="black",
-                stroke_width=3,
+                txt=info["word"],
+                fontsize=SUBTITLE_FONT_SIZE,
+                font=SUBTITLE_FONT_PATH,
+                color=SUBTITLE_COLOR,
+                stroke_color=SUBTITLE_STROKE_COLOR,
+                stroke_width=SUBTITLE_STROKE_WIDTH,
             )
-            .set_start(start_time)
-            .set_duration(word_duration)
+            .set_start(info["start"] / 1000)   # ms → seconds
+            .set_duration(info["duration"] / 1000)
             .set_position(("center", "bottom"))
         )
-        word_clips.append(word_clip)
+        word_clips.append(clip)
 
-    subtitle_clip = CompositeVideoClip(word_clips).set_duration(duration).margin(bottom=60)
-    return subtitle_clip
+    return (
+        CompositeVideoClip(word_clips)
+        .set_duration(duration)
+        .margin(bottom=SUBTITLE_BOTTOM_MARGIN)
+    )

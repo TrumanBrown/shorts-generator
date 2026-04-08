@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
+*.pyo
 .env
 .venv/
 venv/
@@ -8,3 +9,4 @@ input/images/
 input/script.txt
 output/
 .DS_Store
+*.bak

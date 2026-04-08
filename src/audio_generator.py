@@ -1,28 +1,109 @@
-import os
-from elevenlabs.client import ElevenLabs
+"""Text-to-speech generation via Azure Speech or ElevenLabs.
+
+Provides a unified ``generate_tts`` entry point that dispatches to the
+provider configured by the ``TTS_PROVIDER`` environment variable.  Azure TTS
+returns per-word timing data used for dynamic subtitle rendering.
+"""
+
+import logging
+from pathlib import Path
+
 import azure.cognitiveservices.speech as speechsdk
-from src.config import AZURE_TTS_KEY, AZURE_TTS_REGION
+from elevenlabs.client import ElevenLabs
 
-TTS_PROVIDER = os.getenv("TTS_PROVIDER", "azure").lower()
+from src.config import (
+    AZURE_TTS_KEY,
+    AZURE_TTS_REGION,
+    ELEVENLABS_API_KEY,
+    ELEVENLABS_VOICE_ID,
+    TTS_PROVIDER,
+)
+
+logger = logging.getLogger(__name__)
 
 
-def generate_tts(text, path):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    if TTS_PROVIDER == "azure":
-        return generate_tts_azure(text, path)
-    return generate_tts_elevenlabs(text, path)
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def generate_tts(text: str, path: str | Path) -> list[dict]:
+    """Generate a TTS audio file for *text* at *path*.
+
+    Returns a list of word-timing dicts (``{word, start, duration}`` in ms)
+    when available (Azure), or an empty list (ElevenLabs).
+    """
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+
+    if TTS_PROVIDER == "elevenlabs":
+        return _generate_elevenlabs(text, str(path))
+    return _generate_azure(text, str(path))
 
 
-def generate_tts_elevenlabs(text, path):
-    api_key = os.getenv("ELEVENLABS_API_KEY")
-    voice_id = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
-    if not api_key:
-        raise EnvironmentError("ELEVENLABS_API_KEY not set")
+# ---------------------------------------------------------------------------
+# Azure Speech
+# ---------------------------------------------------------------------------
 
-    client = ElevenLabs(api_key=api_key)
+def _generate_azure(text: str, path: str) -> list[dict]:
+    """Synthesize speech with Azure Cognitive Services.
+
+    Raises:
+        EnvironmentError: If Azure TTS credentials are missing.
+        RuntimeError: If synthesis fails.
+    """
+    if not AZURE_TTS_KEY or not AZURE_TTS_REGION:
+        raise EnvironmentError(
+            "AZURE_TTS_KEY and AZURE_TTS_REGION must be set for Azure TTS."
+        )
+
+    speech_config = speechsdk.SpeechConfig(
+        subscription=AZURE_TTS_KEY, region=AZURE_TTS_REGION
+    )
+    speech_config.speech_synthesis_voice_name = "en-US-BrianMultilingualNeural"
+
+    audio_config = speechsdk.audio.AudioOutputConfig(filename=path)
+    synthesizer = speechsdk.SpeechSynthesizer(
+        speech_config=speech_config, audio_config=audio_config
+    )
+
+    word_timings: list[dict] = []
+
+    def _on_word_boundary(evt):
+        word_timings.append({
+            "word": evt.text,
+            "start": evt.audio_offset / 10_000,  # ticks → milliseconds
+            "duration": (
+                evt.duration.total_seconds() * 1000 if evt.duration else 0
+            ),
+        })
+
+    synthesizer.synthesis_word_boundary.connect(_on_word_boundary)
+
+    result = synthesizer.speak_text_async(text).get()
+    if result.reason != speechsdk.ResultReason.SynthesizingAudioCompleted:
+        raise RuntimeError(f"Azure TTS failed: {result.reason}")
+
+    logger.info("Azure TTS complete (%d words) → %s", len(word_timings), path)
+    return word_timings
+
+
+# ---------------------------------------------------------------------------
+# ElevenLabs
+# ---------------------------------------------------------------------------
+
+def _generate_elevenlabs(text: str, path: str) -> list[dict]:
+    """Synthesize speech with ElevenLabs.
+
+    Raises:
+        EnvironmentError: If the ElevenLabs API key is missing.
+        RuntimeError: If the API call fails.
+    """
+    if not ELEVENLABS_API_KEY:
+        raise EnvironmentError("ELEVENLABS_API_KEY must be set.")
+
+    client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
     try:
         audio_stream = client.text_to_speech.convert(
-            voice_id=voice_id,
+            voice_id=ELEVENLABS_VOICE_ID,
             output_format="mp3_44100_128",
             text=text,
             model_id="eleven_multilingual_v2",
@@ -30,42 +111,8 @@ def generate_tts_elevenlabs(text, path):
         with open(path, "wb") as f:
             for chunk in audio_stream:
                 f.write(chunk)
-        print(f"Generated TTS with ElevenLabs: {path}")
-        return []  # ElevenLabs API does not return timings
-    except Exception as e:
-        raise RuntimeError(f"ElevenLabs TTS failed: {e}")
+    except Exception as exc:
+        raise RuntimeError(f"ElevenLabs TTS failed: {exc}") from exc
 
-
-def generate_tts_azure(text, path):
-    if not AZURE_TTS_KEY or not AZURE_TTS_REGION:
-        raise EnvironmentError("AZURE_TTS_KEY and AZURE_TTS_REGION must be set for Azure TTS.")
-
-    speech_config = speechsdk.SpeechConfig(subscription=AZURE_TTS_KEY, region=AZURE_TTS_REGION)
-    speech_config.speech_synthesis_voice_name = "en-US-BrianMultilingualNeural"
-
-    audio_config = speechsdk.audio.AudioOutputConfig(filename=path)
-    synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
-
-    word_timings = []
-
-    def word_boundary_handler(evt):
-        start_time_ms = evt.audio_offset / 10000  # convert to ms
-        word_timings.append(
-            {
-                "word": evt.text,
-                "start": start_time_ms,
-                "duration": evt.duration.total_seconds() * 1000 if evt.duration else 0,
-            }
-        )
-
-    synthesizer.synthesis_word_boundary.connect(word_boundary_handler)
-
-    try:
-        result = synthesizer.speak_text_async(text).get()
-        if result.reason != speechsdk.ResultReason.SynthesizingAudioCompleted:
-            raise RuntimeError(f"Azure TTS failed with reason: {result.reason}")
-
-        print(f"Generated TTS with Azure: {path}")
-        return word_timings
-    except Exception as e:
-        raise RuntimeError(f"Azure TTS failed: {e}")
+    logger.info("ElevenLabs TTS complete → %s", path)
+    return []  # ElevenLabs does not provide word-level timings
