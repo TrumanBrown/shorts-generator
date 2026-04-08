@@ -1,149 +1,240 @@
 # Anime Shorts Generator
 
-This project automates the creation of 60-second anime "Did You Know?" videos, focused on surprising or emotional trivia from a single anime series (Naruto, One Piece, or Attack on Titan). It uses OpenAI to generate a script, Azure TTS for voiceover, Google CSE for images, and MoviePy to output a complete vertical short.
+Automated pipeline that creates 60-second anime "Did You Know?" vertical videos from scratch — generates a trivia script with GPT-4, fetches matching images, synthesizes narration, overlays word-level subtitles, and exports a ready-to-post `.mp4`.
 
-## Features
+## How It Works
 
-- Generates a “Did You Know?” script using Azure OpenAI GPT-4
-- Focuses on a single anime fact, not general summaries
-- Parses [image prompt] tags and pairs them with narration
-- Fetches relevant anime imagery using Google Custom Search API
-- Converts narration to voice with Azure TTS
-- Cleans output folders on every run for consistent results
-- Outputs a complete, ready-to-post .mp4 video for YouTube Shorts or TikTok
+```
+main.py (CLI)
+  └─ pipeline.py
+       ├─ 1. script_generator.py  →  Azure OpenAI GPT-4 writes a trivia script
+       ├─ 2. script_generator.py  →  Parses script into (image_prompt, narration) pairs
+       ├─ 3. image_handler.py     →  Google Custom Search fetches + validates images
+       ├─ 4. audio_generator.py   →  Azure TTS or ElevenLabs generates voiceover
+       ├─ 5. subtitles.py         →  MoviePy renders word-level subtitle overlays
+       └─ 6. video_renderer.py    →  Composes 1080×1080 video @ 24fps → output/final_video.mp4
+```
+
+Each run clears `input/images/` and `audio/` to avoid stale assets.
+
+## Project Structure
+
+```
+├── main.py                  # CLI entry point (--no-audio, --skip-script)
+├── main_with_audio.py       # Convenience: always renders with audio
+├── main_no_audio.py         # Convenience: always renders without audio
+├── requirements.txt
+├── .env                     # Credentials (not committed)
+├── .python-version          # 3.11
+│
+├── src/
+│   ├── __init__.py
+│   ├── config.py            # All env vars, paths, and constants
+│   ├── pipeline.py          # Orchestration + CLI argument parsing
+│   ├── script_generator.py  # GPT-4 script generation + parsing
+│   ├── image_handler.py     # Google CSE image search + download
+│   ├── audio_generator.py   # Azure TTS / ElevenLabs TTS
+│   ├── subtitles.py         # Static or word-level subtitle clips
+│   └── video_renderer.py    # MoviePy segment composition + export
+│
+├── input/
+│   ├── script.txt           # Generated script (gitignored)
+│   └── images/              # Downloaded images (gitignored)
+├── audio/                   # TTS audio files (gitignored)
+└── output/
+    └── final_video.mp4      # Final rendered video (gitignored)
+```
 
 ## Requirements
 
-- Python 3.11 (recommended)
-	- This project's dependency pins are not compatible with very new Python versions (e.g. 3.13/3.14), which can cause `pip install -r requirements.txt` to fail while building `Pillow` from source.
-- ffmpeg installed and accessible in your system PATH
-- ImageMagick installed and on PATH (required by MoviePy for subtitles on Windows)
-- Google API key and Custom Search Engine (CSE) ID with image search enabled
-- Azure OpenAI resource with a GPT-4 deployment
-- Azure Speech service key and region
+### System dependencies
 
-Optional:
+| Tool | Purpose | Install |
+|------|---------|---------|
+| **Python 3.11** | Runtime (Pillow pin requires ≤3.12) | `sudo apt install python3.11` or [python.org](https://www.python.org/downloads/) |
+| **ffmpeg** | Video encoding | `sudo apt install ffmpeg` / [ffmpeg.org](https://ffmpeg.org/download.html) |
+| **ImageMagick** | Subtitle text rendering (MoviePy) | `sudo apt install imagemagick` / [imagemagick.org](https://imagemagick.org/script/download.php) |
 
-- ElevenLabs account if you want to use `TTS_PROVIDER=elevenlabs`
+### API accounts
+
+| Service | What it does | Required |
+|---------|-------------|----------|
+| **Azure OpenAI** (GPT-4 deployment) | Generates the trivia script | Yes |
+| **Azure Speech** | Text-to-speech with word-level timings | Yes (default TTS) |
+| **Google Custom Search** | Fetches anime images | Yes |
+| **ElevenLabs** | Alternative TTS (no word timings) | Optional |
 
 ## Setup
 
-### 1. Clone the repository
+### 1. Clone and enter the repo
 
 ```bash
-git clone https://github.com/trumanbrown/shorts-generator.git
+git clone git@github.com:TrumanBrown/shorts-generator.git
 cd shorts-generator
 ```
 
-### 2. Create and activate a virtual environment
+### 2. Create a virtual environment
 
-macOS/Linux:
+**Linux / macOS:**
 
 ```bash
-python3 -m venv venv
+python3.11 -m venv venv
 source venv/bin/activate
 ```
 
-Windows:
+**Windows:**
 
 ```bash
-py -3.11 -m venv .venv
-.venv\Scripts\activate
+py -3.11 -m venv venv
+venv\Scripts\activate
 ```
 
-### 3. Install dependencies
+### 3. Install Python dependencies
 
 ```bash
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-If you see an error building `Pillow` on Windows, it almost always means your Python version is too new for the pinned dependencies. Recreate the venv with Python 3.11 (above) and retry.
+> If `Pillow` fails to build, your Python version is likely too new. Use 3.11 or 3.12.
 
-Ensure ffmpeg is installed. You can download it from https://ffmpeg.org/download.html
+### 4. Verify system tools
 
-ImageMagick on Windows (needed for subtitles):
-- Download ImageMagick 7 (Q16) from https://imagemagick.org/script/download.php
-- During setup, check “Add application directory to your system path” and “Install legacy utilities (convert)”
-- Open a new terminal and verify `magick --version` works
-- If MoviePy still cannot find it, set the path in `.env` (adjust if your install differs):
-  - `IMAGEMAGICK_BINARY="C:\\Program Files\\ImageMagick-7.1.1-Q16-HDRI\\magick.exe"`
-- If you hit a missing-font error, set a Windows font in `.env`, e.g. `SUBTITLE_FONT_PATH="C:\\Windows\\Fonts\\arialbd.ttf"`
-
-## Environment Configuration
-
-Create a `.env` file in the root directory and populate it with your credentials:
-
+```bash
+ffmpeg -version       # should print version info
+convert --version     # ImageMagick (Linux) — or `magick --version` on Windows
 ```
+
+### 5. Create `.env`
+
+Copy this template into a `.env` file in the project root:
+
+```env
+# --- Google Image Search ---
 GOOGLE_API_KEY="your-google-api-key"
-GOOGLE_CSE_ID="your-custom-search-id"
+GOOGLE_CSE_ID="your-custom-search-engine-id"
 
-AZURE_TTS_KEY="your-azure-tts-key"
-AZURE_TTS_REGION="your-region"
+# --- Azure TTS ---
+AZURE_TTS_KEY="your-azure-speech-key"
+AZURE_TTS_REGION="westus"
 
-AZURE_OPENAI_API_KEY="your-openai-key"
+# --- Azure OpenAI (script generation) ---
+AZURE_OPENAI_API_KEY="your-azure-openai-key"
 AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
 AZURE_OPENAI_DEPLOYMENT="gpt-4"
 AZURE_OPENAI_API_VERSION="2024-12-01-preview"
 
-# Optional: swap to ElevenLabs TTS
-TTS_PROVIDER="azure" # or "elevenlabs"
-ELEVENLABS_API_KEY="your-elevenlabs-key"
-ELEVENLABS_VOICE_ID="21m00Tcm4TlvDq8ikWAM"
-```
+# --- TTS Provider (azure or elevenlabs) ---
+TTS_PROVIDER="azure"
 
-Notes:
-- `TTS_PROVIDER` defaults to `azure` when omitted.
-- Scripts are written to `input/script.txt`. Use `--skip-script` to reuse or manually edit that file between runs.
-- Each run clears `input/images/` and `audio/` to avoid stale assets.
+# --- ElevenLabs (optional, only if TTS_PROVIDER=elevenlabs) ---
+# ELEVENLABS_API_KEY="your-elevenlabs-key"
+# ELEVENLABS_VOICE_ID="21m00Tcm4TlvDq8ikWAM"
+
+# --- Optional overrides ---
+# LOG_LEVEL="DEBUG"                          # Default: INFO
+# IMAGEMAGICK_BINARY="/usr/bin/convert"      # Override ImageMagick path
+# SUBTITLE_FONT_PATH="/path/to/font.ttf"    # Override subtitle font
+```
 
 ## Usage
 
-Run the generator (audio enabled by default):
+### Generate a video (default — with audio)
 
 ```bash
 python main.py
 ```
 
-Flags:
+### CLI flags
 
-- `--no-audio`: render without narration or word-level subtitles
-- `--skip-script`: reuse the existing script file instead of generating a new one
+| Flag | Effect |
+|------|--------|
+| `--no-audio` | Skip TTS, render silent video with static subtitles |
+| `--skip-script` | Reuse existing `input/script.txt` instead of generating a new one |
 
-Other entry points:
+```bash
+# Silent video (no TTS)
+python main.py --no-audio
 
-- `python main_with_audio.py` forces audio on.
-- `python main_no_audio.py` runs with `--no-audio`.
+# Reuse an existing script (edit input/script.txt first if desired)
+python main.py --skip-script
 
-The script will:
+# Combine both
+python main.py --no-audio --skip-script
+```
 
-- Generate a single-anime script around one surprising or emotional fact
-- Fetch 12 images using Google Search
-- Generate voiceover using Azure TTS
-- Combine all segments into `output/final_video.mp4`
+### Convenience entry points
 
-Each run clears the `input/images/` and `audio/` directories to avoid stale content.
+```bash
+python main_with_audio.py    # Same as: python main.py
+python main_no_audio.py      # Same as: python main.py --no-audio
+```
 
 ## Script Format
 
-Generated scripts follow this format:
+The generated (or hand-edited) script at `input/script.txt` uses alternating lines:
 
 ```
-[zoro holding swords]
-Zoro's three-sword style was inspired by a real Japanese swordsman.
+[naruto shikamaru playing shogi]
+Did you know Shikamaru's tactics were inspired by a real chess grandmaster?
 
-[sanji cooking]
-Some of Sanji’s recipes are based on meals the author personally enjoys.
+[naruto shikamaru shadow possession jutsu]
+Even his Shadow Possession Jutsu mirrors how chess masters anticipate opponents.
 ```
 
-Each `[tag]` line indicates the image search prompt, followed by a short narration line.
+- **Odd lines** — `[image search prompt]` used to find images via Google CSE
+- **Even lines** — Narration text sent to TTS and rendered as subtitles
+
+The file must have an even number of non-empty lines.
 
 ## Output
 
-Final video is saved to `output/final_video.mp4`.
+| Path | Contents |
+|------|----------|
+| `output/final_video.mp4` | Final 1080×1080 vertical video at 24fps |
+| `input/script.txt` | Last generated script |
+| `input/images/step1.jpg` … | Downloaded images for each segment |
+| `audio/step1.mp3` … | TTS audio for each segment (when audio enabled) |
 
-Output paths and cached assets:
-- `input/script.txt`: latest generated script (reused with `--skip-script`)
-- `input/images/`: downloaded images for the current run
-- `audio/`: TTS mp3s (skipped when running with `--no-audio`)
+## Configuration Reference
 
-Supports content suitable for YouTube Shorts, TikTok, or Instagram Reels.
+All configuration lives in `src/config.py`. Key constants:
+
+| Constant | Default | Purpose |
+|----------|---------|---------|
+| `VIDEO_WIDTH` / `VIDEO_HEIGHT` | 1080 × 1080 | Output resolution |
+| `VIDEO_FPS` | 24 | Frame rate |
+| `DEFAULT_CLIP_DURATION` | 3.5s | Clip length when audio is disabled |
+| `FADE_DURATION` | 0.5s | Fade-in/out per segment |
+| `SUBTITLE_FONT_SIZE` | 60 | Subtitle text size |
+| `SUBTITLE_COLOR` | yellow | Subtitle text color |
+| `TTS_PROVIDER` | azure | `azure` or `elevenlabs` |
+| `LOG_LEVEL` | INFO | Python logging level |
+
+## Logging
+
+The pipeline uses Python's `logging` module. Set `LOG_LEVEL` in `.env` to control verbosity:
+
+```env
+LOG_LEVEL="DEBUG"    # DEBUG, INFO, WARNING, ERROR
+```
+
+Logs include timestamps and module names:
+
+```
+2026-04-07 12:00:00 [INFO] src.pipeline: Starting pipeline (audio=True, regenerate_script=True)
+2026-04-07 12:00:01 [INFO] src.script_generator: Generating anime script via Azure OpenAI (gpt-4)…
+2026-04-07 12:00:05 [INFO] src.image_handler: Searching images for 'naruto shikamaru playing shogi' (max 5 results)
+```
+
+## Windows Notes
+
+- Install ImageMagick 7 (Q16) and check "Add to system path" + "Install legacy utilities"
+- If MoviePy can't find ImageMagick, set `IMAGEMAGICK_BINARY` in `.env`:
+  ```
+  IMAGEMAGICK_BINARY="C:\Program Files\ImageMagick-7.1.1-Q16-HDRI\magick.exe"
+  ```
+- If subtitles fail with a font error, set `SUBTITLE_FONT_PATH`:
+  ```
+  SUBTITLE_FONT_PATH="C:\Windows\Fonts\arialbd.ttf"
+  ```
